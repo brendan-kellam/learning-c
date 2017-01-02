@@ -269,11 +269,62 @@ Some notes:
 	returns [recv()]:
 		int: number of bytes actually read into the buffer, or, -1 on error.
 			NOTE - if recv() returns 0, this means the remote side closed the connection on you!
+
+	---------- Send-to and Recieve-from system calls ----------
+	#include <sys/types.h>
+	#include <sys/socket.h>
+
+	int sendto(int sockfd, const void *msg, int len, unsigned int flags, const struct sockaddr *to, socklen_t tolen);
+	int recvfrom(int sockfd, void *buf, int len, unsigned int flags, struct sockaddr *from, int *fromlen);
+	
+	purpose:
+		Allow for communication over DATAGRAM sockets that are unconnected.
+		NOTE: this type of comms are NOT REQUIRED if the DATAGRAM socket is connected. 
+
+	parameters [sendto()]:
+		THE FIRST 4 ARGUMENTS ARE THE SAME AS recv();
+		to: a pointer to a struct sockaddr, containing the destination IP address and port
+		tolen: set to - sizeof *to
+
+	recvfrom() uses a very similar mechanic...
+
+
+	---------- Close / shutdown ----------
+	close(socketfd);
+
+	alternatively: 
+
+	int shutdown(int sockfd, int how);
+
+	how:
+		0 - Further receives are disallowed
+		1 - Further sends are disallowed
+		2 - Further sends and receives are disallowed (like close())
+
+	NOTE: shutdown doesn't actually close the file descriptor - it changes its
+		  usability. TO FREE: use close(int socketfd);
+	
+	---------- getpeername() ----------
+		
+	int getpeername(int sockfd, struct sockaddr *addr, int *addrlen);
+
+	purpose:
+		gets information on a given connection (as given by sockfd) and stores the
+		result to a struct sockaddr pointer: addr.
+
+
+	---------- gethostname() ----------
+	#include <unistd.h>
+	
+	int gethostname(char *hostname, size_t size
+
 */
 
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <unistd.h>
 #include "net.h"
 
 // yields a pointer to a linked list (res)
@@ -336,24 +387,10 @@ void tutsocket(){
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 
-	if ((status = getaddrinfo(NULL, "3490", &hints, &res)) != 0){
-		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-    	exit(1);
-	}
-
 	socketfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
 	// bind the socket to the port passed into getaddrinfo
-	bind(sockfd, res->ai_addr, res->ai_addrlen);
-
-	/* to remove the "Address already in use" error message: */
-	int yes = 1;
-
-	if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes) == -1){
-		perror("setsockopt");
-		exit(1);
-	}
-
+	bind(socketfd, res->ai_addr, res->ai_addrlen);
 }
 
 // basic implementation of connect
@@ -372,7 +409,7 @@ void tutconnect(){
 	socketfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
 	//connect!
-	connect(sockfd, res->ai_addr, res->ai_addrlen);
+	connect(socketfd, res->ai_addr, res->ai_addrlen);
 }
 
 // basic implementation of accept
@@ -408,5 +445,24 @@ void tutaccept(){
 
 int main(){
 	print(BLU "running.." RESET);
+
+	struct timeval tv;
+	fd_set readfds;
+
+	tv.tv_sec = 2;
+	tv.tv_usec = 500000;
+
+	FD_ZERO(&readfds);
+	FD_SET(0, &readfds);
+
+	select(1, &readfds, NULL, NULL, &tv);
+
+	if (FD_ISSET(0, &readfds))
+		printf("A key was pressed!");
+	else
+		printf("Timed out.\n");
+
+	printf("done.\n");
+
 	return 0;
 }
